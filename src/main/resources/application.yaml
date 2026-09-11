@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: codereviewer
+
+server:
+  port: 8081
+
+github:
+  api:
+    url: https://api.github.com
+  token: ${GITHUB_TOKEN:}
+
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+    url: https://generativelanguage.googleapis.com
+  model: gemini-2.0-flash

@@ -19,6 +19,9 @@ public class ReviewController {
         this.reviewService = reviewService;
     }
 
+    /****
+     * This is a comment to test webhook functionality
+     */
     @PostMapping("/webhooks/github")
     public ResponseEntity<String> handleGitHubWebhook(
             @RequestBody ReviewService.GitHubWebhookPayload payload,

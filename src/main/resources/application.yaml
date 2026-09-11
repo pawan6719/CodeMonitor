@@ -2,9 +2,6 @@ spring:
   application:
     name: codereviewer
 
-server:
-  port: 8081
-
 github:
   api:
     url: https://api.github.com

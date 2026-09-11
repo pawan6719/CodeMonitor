@@ -20,7 +20,7 @@ public class ReviewController {
     }
 
     /****
-     * This is a comment to test webhook functionality
+     * This is a comment to test webhook functionality once more
      */
     @PostMapping("/webhooks/github")
     public ResponseEntity<String> handleGitHubWebhook(

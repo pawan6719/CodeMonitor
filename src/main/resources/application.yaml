@@ -8,10 +8,10 @@ server:
 github:
   api:
     url: https://api.github.com
-  token: ${GITHUB_TOKEN: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}
+  token: ${GITHUB_TOKEN:}
 
 gemini:
   api:
-    key: ${GEMINI_API_KEY:AQ.Ab8RN6IzLawy246bNWx8P0Z-5nMOsz-26T3stZZWxCWgDxZ4Fg}
+    key: ${GEMINI_API_KEY:}
     url: https://generativelanguage.googleapis.com
   model: gemini-2.0-flash

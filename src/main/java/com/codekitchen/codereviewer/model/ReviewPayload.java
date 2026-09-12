@@ -1,20 +1,37 @@
 package com.codekitchen.codereviewer.model;
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+
 public class ReviewPayload {
 
-    private final Map<String, Object> payload;
+    private Map<String, Object> payload = new HashMap<>();
 
-    public ReviewPayload(Map<String, Object> payload) {
-        this.payload = payload == null ? Collections.emptyMap() : payload;
+    public ReviewPayload() {
     }
 
+    public ReviewPayload(Map<String, Object> payload) {
+        this.payload = payload == null ? new HashMap<>() : payload;
+    }
+
+    @JsonAnyGetter
     public Map<String, Object> getPayload() {
         return payload;
+    }
+
+    public void setPayload(Map<String, Object> payload) {
+        this.payload = payload == null ? new HashMap<>() : payload;
+    }
+
+    @JsonAnySetter
+    public void setDynamicField(String key, Object value) {
+        this.payload.put(key, value);
     }
 
     public String getAction() {
@@ -42,17 +59,22 @@ public class ReviewPayload {
     }
 
     public String getRepositoryFullName() {
-        return asString(getRepository().get("full_name"));
+        Map<String, Object> repository = getRepository();
+        return repository == null ? null : asString(repository.get("full_name"));
     }
 
     public String getRepositoryName() {
-        return asString(getRepository().get("name"));
+        Map<String, Object> repository = getRepository();
+        return repository == null ? null : asString(repository.get("name"));
     }
 
     public String getRepositoryOwnerLogin() {
         Map<String, Object> repository = getRepository();
+        if (repository == null) {
+            return null;
+        }
         Map<String, Object> owner = asMap(repository.get("owner"));
-        return asString(owner.get("login"));
+        return owner == null ? null : asString(owner.get("login"));
     }
 
     public Map<String, Object> getPullRequest() {
@@ -60,31 +82,46 @@ public class ReviewPayload {
     }
 
     public Integer getPullRequestNumber() {
-        return asInteger(getPullRequest().get("number"));
+        Map<String, Object> pullRequest = getPullRequest();
+        return pullRequest == null ? null : asInteger(pullRequest.get("number"));
     }
 
     public String getPullRequestTitle() {
-        return asString(getPullRequest().get("title"));
+        Map<String, Object> pullRequest = getPullRequest();
+        return pullRequest == null ? null : asString(pullRequest.get("title"));
     }
 
     public String getPullRequestBody() {
-        return asString(getPullRequest().get("body"));
+        Map<String, Object> pullRequest = getPullRequest();
+        return pullRequest == null ? null : asString(pullRequest.get("body"));
     }
 
     public String getPullRequestHtmlUrl() {
-        return asString(getPullRequest().get("html_url"));
+        Map<String, Object> pullRequest = getPullRequest();
+        return pullRequest == null ? null : asString(pullRequest.get("html_url"));
     }
 
     public String getPullRequestState() {
-        return asString(getPullRequest().get("state"));
+        Map<String, Object> pullRequest = getPullRequest();
+        return pullRequest == null ? null : asString(pullRequest.get("state"));
     }
 
     public String getHeadSha() {
-        return asString(getPullRequest().get("head") == null ? null : ((Map<String, Object>) getPullRequest().get("head")).get("sha"));
+        Map<String, Object> pullRequest = getPullRequest();
+        if (pullRequest == null || pullRequest.get("head") == null) {
+            return null;
+        }
+        Map<String, Object> head = asMap(pullRequest.get("head"));
+        return head == null ? null : asString(head.get("sha"));
     }
 
     public String getBaseSha() {
-        return asString(getPullRequest().get("base") == null ? null : ((Map<String, Object>) getPullRequest().get("base")).get("sha"));
+        Map<String, Object> pullRequest = getPullRequest();
+        if (pullRequest == null || pullRequest.get("base") == null) {
+            return null;
+        }
+        Map<String, Object> base = asMap(pullRequest.get("base"));
+        return base == null ? null : asString(base.get("sha"));
     }
 
     public String getCompareUrl() {
@@ -97,6 +134,9 @@ public class ReviewPayload {
 
     public List<String> getModifiedFiles() {
         Map<String, Object> headCommit = asMap(payload.get("head_commit"));
+        if (headCommit == null) {
+            return new ArrayList<>();
+        }
         return asStringList(headCommit.get("modified"));
     }
 
@@ -105,7 +145,8 @@ public class ReviewPayload {
     }
 
     public String getSenderLogin() {
-        return asString(getSender().get("login"));
+        Map<String, Object> sender = getSender();
+        return sender == null ? null : asString(sender.get("login"));
     }
 
     public Map<String, Object> getPusher() {
@@ -113,18 +154,20 @@ public class ReviewPayload {
     }
 
     public String getPusherName() {
-        return asString(getPusher().get("name"));
+        Map<String, Object> pusher = getPusher();
+        return pusher == null ? null : asString(pusher.get("name"));
     }
 
     public String getPusherEmail() {
-        return asString(getPusher().get("email"));
+        Map<String, Object> pusher = getPusher();
+        return pusher == null ? null : asString(pusher.get("email"));
     }
 
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> mapValue) {
             return (Map<String, Object>) mapValue;
         }
-        return Collections.emptyMap();
+        return new HashMap<>();
     }
 
     private static List<Map<String, Object>> asMapList(Object value) {

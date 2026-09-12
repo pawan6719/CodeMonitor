@@ -8,6 +8,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import com.codekitchen.codereviewer.model.ReviewPayload;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,22 +47,20 @@ public class ReviewService {
         this.geminiRestClient = RestClient.builder().baseUrl(geminiApiUrl).build();
     }
 
-    public String reviewPullRequest(GitHubWebhookPayload payload) {
-        if (payload == null || payload.pull_request() == null) {
+    public String reviewPullRequest(ReviewPayload payload) {
+        if (payload == null || payload.getPullRequest() == null) {
             throw new IllegalArgumentException("Pull request payload is missing.");
         }
 
-        if (payload.repository() == null || payload.repository().full_name() == null || payload.repository().full_name().isBlank()) {
+        if (payload.getRepository() == null || payload.getRepositoryFullName() == null || payload.getRepositoryFullName().isBlank()) {
             throw new IllegalArgumentException("Repository details are missing from the webhook payload.");
         }
 
-        GitHubPullRequest pullRequest = payload.pull_request();
-
-        if (pullRequest.number() == null) {
+        if (payload.getPullRequestNumber() == null) {
             throw new IllegalArgumentException("Pull request number is missing from the webhook payload.");
         }
 
-        String[] repositoryParts = payload.repository().full_name().split("/", 2);
+        String[] repositoryParts = payload.getRepositoryFullName().split("/", 2);
 
         if (repositoryParts.length != 2) {
             throw new IllegalArgumentException("Repository full name must be in owner/repo format.");
@@ -69,18 +69,36 @@ public class ReviewService {
         String owner = repositoryParts[0];
         String repo = repositoryParts[1];
 
-        List<GitHubFile> files = fetchPullRequestFiles(owner, repo, pullRequest.number());
+        List<GitHubFile> files = fetchPullRequestFiles(owner, repo, payload.getPullRequestNumber());
 
         if (files.isEmpty()) {
-            return "No changed files were found for pull request #" + pullRequest.number() + ".";
+            return "No changed files were found for pull request #" + payload.getPullRequestNumber() + ".";
         }
 
         String prompt = buildReviewPrompt(payload, files);
         String reviewSummary = callGemini(prompt);
 
-        postPullRequestReview(owner, repo, pullRequest.number(), reviewSummary);
+        postPullRequestReview(owner, repo, payload.getPullRequestNumber(), reviewSummary);
 
         return reviewSummary;
+    }
+
+    public String reviewPushRequest(ReviewPayload payload) {
+        if (payload == null || payload.getRepository() == null) {
+            throw new IllegalArgumentException("Push payload is missing repository details.");
+        }
+
+        if (payload.getRepositoryFullName() == null || payload.getRepositoryFullName().isBlank()) {
+            throw new IllegalArgumentException("Repository details are missing from the webhook payload.");
+        }
+
+        List<String> modifiedFiles = payload.getModifiedFiles();
+        if (modifiedFiles.isEmpty()) {
+            return "No changed files were found for this push event.";
+        }
+
+        String prompt = buildPushReviewPrompt(payload, modifiedFiles);
+        return callGemini(prompt);
     }
 
     private List<GitHubFile> fetchPullRequestFiles(String owner, String repo, int pullRequestNumber) {
@@ -92,15 +110,15 @@ public class ReviewService {
         return files == null ? new ArrayList<>() : files;
     }
 
-    private String buildReviewPrompt(GitHubWebhookPayload payload, List<GitHubFile> files) {
+    private String buildReviewPrompt(ReviewPayload payload, List<GitHubFile> files) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("You are a senior code reviewer. Review the pull request changes below for correctness, quality, security, and maintainability.\n");
-        prompt.append("Repository: ").append(payload.repository().full_name()).append("\n");
-        prompt.append("Pull request number: #").append(payload.pull_request().number()).append("\n");
-        prompt.append("Title: ").append(payload.pull_request().title() == null ? "" : payload.pull_request().title()).append("\n");
+        prompt.append("Repository: ").append(payload.getRepositoryFullName()).append("\n");
+        prompt.append("Pull request number: #").append(payload.getPullRequestNumber()).append("\n");
+        prompt.append("Title: ").append(payload.getPullRequestTitle() == null ? "" : payload.getPullRequestTitle()).append("\n");
 
-        if (payload.pull_request().body() != null && !payload.pull_request().body().isBlank()) {
-            prompt.append("Description: ").append(payload.pull_request().body()).append("\n");
+        if (payload.getPullRequestBody() != null && !payload.getPullRequestBody().isBlank()) {
+            prompt.append("Description: ").append(payload.getPullRequestBody()).append("\n");
         }
 
         prompt.append("\nReturn concise, actionable feedback in markdown. Focus on likely bugs, edge cases, security concerns, code quality, and maintainability.\n\n");
@@ -116,6 +134,47 @@ public class ReviewService {
         }
 
         return prompt.toString();
+    }
+
+    private String buildPushReviewPrompt(ReviewPayload payload, List<String> modifiedFiles) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("You are a senior code reviewer. Review the push event below for potential risks, regressions, and quality concerns.\n");
+        prompt.append("Repository: ").append(payload.getRepositoryFullName()).append("\n");
+        prompt.append("Ref: ").append(payload.getRef() == null ? "" : payload.getRef()).append("\n");
+        prompt.append("Compare URL: ").append(payload.getCompareUrl() == null ? "" : payload.getCompareUrl()).append("\n");
+
+        if (payload.getPayload() != null && payload.getPayload().get("head_commit") instanceof Map<?, ?> headCommit) {
+            Object message = headCommit.get("message");
+            if (message != null) {
+                prompt.append("Commit message: ").append(message).append("\n");
+            }
+
+            prompt.append("Modified files: ").append(String.join(", ", modifiedFiles)).append("\n");
+
+            appendFileList(prompt, "Added files", headCommit.get("added"));
+            appendFileList(prompt, "Removed files", headCommit.get("removed"));
+            appendFileList(prompt, "Modified files", headCommit.get("modified"));
+        } else {
+            prompt.append("Modified files: ").append(String.join(", ", modifiedFiles)).append("\n");
+        }
+
+        prompt.append("\nReturn concise, actionable feedback in markdown. Focus on likely bugs, regressions, deployment risks, security concerns, and validation suggestions.\n");
+        return prompt.toString();
+    }
+
+    private void appendFileList(StringBuilder prompt, String label, Object filesValue) {
+        if (!(filesValue instanceof List<?> fileList) || fileList.isEmpty()) {
+            return;
+        }
+
+        prompt.append(label).append(": ");
+        List<String> fileNames = new ArrayList<>();
+        for (Object file : fileList) {
+            if (file != null) {
+                fileNames.add(String.valueOf(file));
+            }
+        }
+        prompt.append(String.join(", ", fileNames)).append("\n");
     }
 
     private String callGemini(String prompt) {
@@ -168,7 +227,7 @@ public class ReviewService {
                 .body(Map.class);
     }
 
-    public record GitHubWebhookPayload(String action, GitHubPullRequest pull_request, GitHubRepository repository) {
+    public record  GitHubWebhookPayload(String action, GitHubPullRequest pull_request, GitHubRepository repository) {
     }
 
     public record GitHubPullRequest(Integer number, String title, String body) {

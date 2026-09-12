@@ -3,6 +3,9 @@ package com.codekitchen.codereviewer.controller;
 import com.codekitchen.codereviewer.model.Events;
 import com.codekitchen.codereviewer.model.ReviewPayload;
 import com.codekitchen.codereviewer.service.ReviewService;
+
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,9 +26,11 @@ public class ReviewController {
 
     @PostMapping("/pull")
     public ResponseEntity<String> reviewPull(
-            @RequestBody ReviewPayload payload,
+            @RequestBody Map<String, Object> reviewPayload,
             @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
 
+                ReviewPayload payload = new ReviewPayload();
+                payload.setPayload(reviewPayload);
         if (payload == null || payload.getPullRequest() == null || payload.getRepository() == null) {
             return ResponseEntity.badRequest().body("Expected a valid GitHub pull request webhook payload.");
         }
@@ -47,9 +52,11 @@ public class ReviewController {
 
     @PostMapping("/push")
     public ResponseEntity<String> reviewPush(
-            @RequestBody ReviewPayload payload,
+            @RequestBody Map<String, Object> reviewPayload,
             @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
 
+                ReviewPayload payload = new ReviewPayload();
+                payload.setPayload(reviewPayload);
         if (payload == null || payload.getRepository() == null) {
             return ResponseEntity.badRequest().body("Expected a valid GitHub push webhook payload.");
         }

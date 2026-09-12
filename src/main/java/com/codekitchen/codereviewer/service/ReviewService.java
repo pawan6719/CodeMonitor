@@ -101,6 +101,13 @@ public class ReviewService {
         return callGemini(prompt);
     }
 
+    /***
+     * 
+     * @param owner
+     * @param repo
+     * @param pullRequestNumber
+     * @return
+     */
     private List<GitHubFile> fetchPullRequestFiles(String owner, String repo, int pullRequestNumber) {
         List<GitHubFile> files = githubRestClient.get()
                 .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/files", owner, repo, pullRequestNumber)

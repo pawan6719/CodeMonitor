@@ -51,7 +51,7 @@ public class ReviewService {
         String[] repositoryParts = payload.getRepositoryFullName().split("/", 2);
 
         if (repositoryParts.length != 2) {
-            throw new IllegalArgumentException("Repository full name must be in owner/repo format.");
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Repository full name must be in owner/repo format."));
         }
 
         String owner = repositoryParts[0];
@@ -69,7 +69,7 @@ public class ReviewService {
         String commitId = payload.getHeadSha();
         log.info(String.format("AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s", review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
         log.info(review.toString());
-        githubRestClient.postPullRequestReview(owner, repo, commitId, review);
+        //githubRestClient.postPullRequestReview(owner, repo, commitId, review);
 
         if (reviewPersistenceService != null) {
             reviewPersistenceService.saveReview(payload, "pull_request", review);

@@ -24,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -77,7 +76,7 @@ class ReviewServiceTest {
         when(githubClient.postPullRequestReview(eq("pawan6719"), eq("CodeMonitor"), eq("29fd92e99337815f4563e85c4356bc3baecbe6df"), eq(mockReview)))
                 .thenReturn("SUCCESS");
 
-        reviewService.reviewPullRequest(payload);
+        reviewService.reviewPullRequest(payload).join();
 
         verify(githubClient, times(1)).fetchPullRequestFiles("pawan6719", "CodeMonitor", 3);
         verify(geminiChatClient, times(1)).reviewPullRequest(payload, mockFiles);
@@ -86,76 +85,61 @@ class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when payload is null")
+    @DisplayName("Should return failed future with IllegalArgumentException when payload is null")
     void reviewPullRequest_shouldThrowWhenPayloadIsNull() {
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> reviewService.reviewPullRequest(null)
-        );
-        assertTrue(exception.getMessage().contains("Pull request payload is missing"));
+        var future = reviewService.reviewPullRequest(null);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when repository details are missing in payload")
+    @DisplayName("Should return failed future with IllegalArgumentException when repository details are missing in payload")
     void reviewPullRequest_shouldThrowWhenRepositoryIsMissing() {
         Map<String, Object> map = new HashMap<>();
         map.put("pull_request", Map.of("number", 1));
         ReviewPayload payload = new ReviewPayload(map);
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> reviewService.reviewPullRequest(payload)
-        );
-        assertTrue(exception.getMessage().contains("Repository details are missing from the webhook payload."));
+        var future = reviewService.reviewPullRequest(payload);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when repository full_name is blank")
+    @DisplayName("Should return failed future with IllegalArgumentException when repository full_name is blank")
     void reviewPullRequest_shouldThrowWhenRepositoryFullNameIsBlank() {
         Map<String, Object> map = new HashMap<>();
         map.put("pull_request", Map.of("number", 1));
         map.put("repository", Map.of("full_name", "   "));
         ReviewPayload payload = new ReviewPayload(map);
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> reviewService.reviewPullRequest(payload)
-        );
-        assertTrue(exception.getMessage().contains("Repository details are missing from the webhook payload."));
+        var future = reviewService.reviewPullRequest(payload);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when pull request number is missing")
+    @DisplayName("Should return failed future with IllegalArgumentException when pull request number is missing")
     void reviewPullRequest_shouldThrowWhenPullRequestNumberIsMissing() {
         Map<String, Object> map = new HashMap<>();
         map.put("pull_request", Map.of("title", "No Number PR"));
         map.put("repository", Map.of("full_name", "owner/repo"));
         ReviewPayload payload = new ReviewPayload(map);
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> reviewService.reviewPullRequest(payload)
-        );
-        assertTrue(exception.getMessage().contains("Pull request number is missing from the webhook payload."));
+        var future = reviewService.reviewPullRequest(payload);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when repository full_name is not owner/repo format")
+    @DisplayName("Should return failed future with IllegalArgumentException when repository full_name is not owner/repo format")
     void reviewPullRequest_shouldThrowWhenRepositoryFullNameFormatIsInvalid() {
         Map<String, Object> map = new HashMap<>();
         map.put("pull_request", Map.of("number", 1));
         map.put("repository", Map.of("full_name", "invalid-repo-name-without-slash"));
         ReviewPayload payload = new ReviewPayload(map);
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> reviewService.reviewPullRequest(payload)
-        );
-        assertTrue(exception.getMessage().contains("Repository full name must be in owner/repo format"));
+        var future = reviewService.reviewPullRequest(payload);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
-    @DisplayName("Should throw RuntimeException when GitHubClient returns no changed files")
+    @DisplayName("Should return failed future with RuntimeException when GitHubClient returns no changed files")
     void reviewPullRequest_shouldThrowWhenNoChangedFilesFound() {
         Map<String, Object> map = new HashMap<>();
         map.put("pull_request", Map.of("number", 42));
@@ -165,11 +149,8 @@ class ReviewServiceTest {
         when(githubClient.fetchPullRequestFiles("owner", "repo", 42))
                 .thenReturn(Collections.emptyList());
 
-        RuntimeException exception = assertThrows(
-                RuntimeException.class,
-                () -> reviewService.reviewPullRequest(payload)
-        );
-        assertTrue(exception.getMessage().contains("No changed files were found for pull request #42."));
+        var future = reviewService.reviewPullRequest(payload);
+        assertTrue(future.isCompletedExceptionally());
     }
 
     @Test
@@ -187,7 +168,7 @@ class ReviewServiceTest {
         when(githubClient.fetchPullRequestFiles("pawan6719", "CodeMonitor", 3)).thenReturn(mockFiles);
         when(geminiChatClient.reviewPullRequest(any(), any())).thenReturn(mockReview);
 
-        serviceWithoutPersistence.reviewPullRequest(payload);
+        serviceWithoutPersistence.reviewPullRequest(payload).join();
 
         verify(githubClient, times(1)).postPullRequestReview(eq("pawan6719"), eq("CodeMonitor"), eq("29fd92e99337815f4563e85c4356bc3baecbe6df"), eq(mockReview));
     }

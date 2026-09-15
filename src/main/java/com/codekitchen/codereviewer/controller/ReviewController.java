@@ -28,7 +28,8 @@ public class ReviewController {
             @RequestBody ReviewPayload payload,
             @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
 
-        if (payload == null || payload.getPullRequest() == null || payload.getRepository() == null) {
+        if (payload == null || payload.getPullRequest() == null || payload.getPullRequest().isEmpty()
+                || payload.getRepository() == null || payload.getRepository().isEmpty()) {
             return ResponseEntity.badRequest().body("Expected a valid GitHub pull request webhook payload.");
         }
 

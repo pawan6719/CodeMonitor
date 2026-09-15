@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,34 +38,36 @@ class ReviewControllerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    @DisplayName("Should return 200 OK when valid pull request opened webhook is received with X-GitHub-Event header")
+    @DisplayName("Should return 202 Accepted when valid pull request opened webhook is received with X-GitHub-Event header")
     void reviewPull_shouldReturnOkWithValidPullRequestPayload() throws Exception {
         String payload = readResource("pull_request_valid.json");
 
-        doNothing().when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+        when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
                         .content(payload))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Review Process is in progress. Check the Pull request in some time"));
+                .andExpect(status().isAccepted())
+                .andExpect(content().string("Review process started in background."));
 
         verify(reviewService, times(1)).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
     }
 
     @Test
-    @DisplayName("Should return 200 OK when X-GitHub-Event header is omitted but payload is valid and action is opened")
+    @DisplayName("Should return 202 Accepted when X-GitHub-Event header is omitted but payload is valid and action is opened")
     void reviewPull_shouldReturnOkWhenEventHeaderIsOmitted() throws Exception {
         String payload = readResource("pull_request_valid.json");
 
-        doNothing().when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+        when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Review Process is in progress. Check the Pull request in some time"));
+                .andExpect(status().isAccepted())
+                .andExpect(content().string("Review process started in background."));
 
         verify(reviewService, times(1)).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
     }
@@ -102,15 +105,68 @@ class ReviewControllerTest {
     }
 
     @Test
-    @DisplayName("Should return 400 Bad Request when reviewService throws IllegalArgumentException for missing PR number")
+    @DisplayName("Should return 400 Bad Request when pull_request object is missing in payload")
     void reviewPull_shouldReturnBadRequestWhenPullRequestMissing() throws Exception {
         Map<String, Object> map = new HashMap<>();
         map.put("action", "opened");
         map.put("repository", Map.of("full_name", "owner/repo"));
         String payload = objectMapper.writeValueAsString(map);
 
-        doThrow(new IllegalArgumentException("Pull request number is missing from the webhook payload."))
-                .when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+        mockMvc.perform(post("/api/review/pull")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-GitHub-Event", "pull_request")
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("Expected a valid GitHub pull request webhook payload."));
+
+        verify(reviewService, never()).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when repository object is missing in payload")
+    void reviewPull_shouldReturnBadRequestWhenRepositoryMissing() throws Exception {
+        Map<String, Object> map = new HashMap<>();
+        map.put("action", "opened");
+        map.put("pull_request", Map.of("number", 1));
+        String payload = objectMapper.writeValueAsString(map);
+
+        mockMvc.perform(post("/api/review/pull")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-GitHub-Event", "pull_request")
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("Expected a valid GitHub pull request webhook payload."));
+
+        verify(reviewService, never()).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when repository full_name does not contain slash")
+    void reviewPull_shouldReturnBadRequestWhenRepositoryFormatIsInvalid() throws Exception {
+        Map<String, Object> map = new HashMap<>();
+        map.put("action", "opened");
+        map.put("pull_request", Map.of("number", 1));
+        map.put("repository", Map.of("full_name", "invalid-repo"));
+        String payload = objectMapper.writeValueAsString(map);
+
+        mockMvc.perform(post("/api/review/pull")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-GitHub-Event", "pull_request")
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("Repository full name must be in owner/repo format."));
+
+        verify(reviewService, never()).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when pull request number is missing from payload")
+    void reviewPull_shouldReturnBadRequestWhenPullRequestNumberMissing() throws Exception {
+        Map<String, Object> map = new HashMap<>();
+        map.put("action", "opened");
+        map.put("pull_request", Map.of("title", "No Number PR"));
+        map.put("repository", Map.of("full_name", "owner/repo"));
+        String payload = objectMapper.writeValueAsString(map);
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -118,57 +174,26 @@ class ReviewControllerTest {
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Pull request number is missing from the webhook payload."));
+
+        verify(reviewService, never()).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
     }
 
     @Test
-    @DisplayName("Should return 400 Bad Request when reviewService throws IllegalArgumentException for missing repository")
-    void reviewPull_shouldReturnBadRequestWhenRepositoryMissing() throws Exception {
-        Map<String, Object> map = new HashMap<>();
-        map.put("action", "opened");
-        map.put("pull_request", Map.of("number", 1));
-        String payload = objectMapper.writeValueAsString(map);
-
-        doThrow(new IllegalArgumentException("Repository details are missing from the webhook payload."))
-                .when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
-
-        mockMvc.perform(post("/api/review/pull")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-GitHub-Event", "pull_request")
-                        .content(payload))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string("Repository details are missing from the webhook payload."));
-    }
-
-    @Test
-    @DisplayName("Should return 400 Bad Request when reviewService throws IllegalArgumentException")
-    void reviewPull_shouldReturnBadRequestWhenServiceThrowsIllegalArgumentException() throws Exception {
+    @DisplayName("Should return 202 Accepted even if background async review completes exceptionally")
+    void reviewPull_shouldHandleBackgroundExceptionGracefully() throws Exception {
         String payload = readResource("pull_request_valid.json");
 
-        doThrow(new IllegalArgumentException("Repository details are missing from the webhook payload."))
-                .when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+        when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
+                .thenReturn(CompletableFuture.failedFuture(new RuntimeException("GitHub API error")));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
                         .content(payload))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string("Repository details are missing from the webhook payload."));
-    }
+                .andExpect(status().isAccepted())
+                .andExpect(content().string("Review process started in background."));
 
-    @Test
-    @DisplayName("Should return 500 Internal Server Error when reviewService throws generic Exception")
-    void reviewPull_shouldReturn500WhenServiceThrowsUnexpectedException() throws Exception {
-        String payload = readResource("pull_request_valid.json");
-
-        doThrow(new RuntimeException("GitHub API connection timeout"))
-                .when(reviewService).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
-
-        mockMvc.perform(post("/api/review/pull")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header("X-GitHub-Event", "pull_request")
-                        .content(payload))
-                .andExpect(status().isInternalServerError())
-                .andExpect(content().string("Unable to process the pull request review: GitHub API connection timeout"));
+        verify(reviewService, times(1)).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
     }
 
     private String readResource(String resourceName) throws Exception {
@@ -177,4 +202,5 @@ class ReviewControllerTest {
         return Files.readString(path);
     }
 }
+
 

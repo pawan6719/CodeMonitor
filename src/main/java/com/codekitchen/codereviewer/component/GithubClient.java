@@ -27,7 +27,8 @@ public class GithubClient {
                 RestClient.Builder githubBuilder = RestClient.builder()
                                 .baseUrl(githubApiUrl)
                                 .defaultHeader("Accept", "application/vnd.github+json")
-                                .defaultHeader("X-GitHub-Api-Version", "2022-11-28");
+                                .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
+                                .defaultHeader("User-Agent", "CodeMonitor");
 
                 if (githubToken != null && !githubToken.isBlank()) {
                         githubBuilder = githubBuilder.defaultHeader("Authorization", "Bearer " + githubToken);

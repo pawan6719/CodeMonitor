@@ -35,6 +35,10 @@ public class ReviewController {
         if (eventType != null && !Events.PULL_REQUEST.name().equalsIgnoreCase(eventType)) {
             return ResponseEntity.badRequest().body("This endpoint only accepts pull_request webhook events.");
         }
+
+        if (!payload.getAction().equalsIgnoreCase("opened")){
+            return ResponseEntity.ok().body("Review process does not run for " + payload.getAction() + " action on a PR");
+        }
         try {
             reviewService.reviewPullRequest(payload);
             return ResponseEntity.ok("Review Process is in progress. Check the Pull request in some time");

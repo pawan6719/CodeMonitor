@@ -91,6 +91,11 @@ public class ReviewPayload {
         return pullRequest == null ? null : asString(pullRequest.get("title"));
     }
 
+    public String getPullRequestUserLogin(){
+        Map<String, Object> pullRequest = getPullRequest();
+        Map<String, Object> getPullRequestUser = asMap(pullRequest.get("user"));
+        return asString(getPullRequestUser.get("login"));
+    }
     public String getPullRequestBody() {
         Map<String, Object> pullRequest = getPullRequest();
         return pullRequest == null ? null : asString(pullRequest.get("body"));

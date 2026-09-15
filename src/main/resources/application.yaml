@@ -1,14 +1,21 @@
 spring:
   application:
     name: codereviewer
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017}
+      database: user-review-profile
+  ai:
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          model: gemini-3.6-flash
+
+server:
+  port: 8081 
 
 github:
   api:
     url: https://api.github.com
-  token: ${GITHUB_TOKEN:}
-
-gemini:
-  api:
-    key: ${GEMINI_API_KEY:}
-    url: https://generativelanguage.googleapis.com
-  model: gemini-3.6-flash
+  token: ${GITHUB_TOKEN}

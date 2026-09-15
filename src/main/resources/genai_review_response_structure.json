@@ -1,0 +1,35 @@
+{
+    "projectId": "codereviewer",
+    "projectName": "CodeReviewer",
+    "pullRequestNumber": "",
+    "pullRequestTitle": "",
+    "pullRequestDescription": "",
+    "pullRequestAuthor": "",
+    "commit_id": "The sha of the commit being reviewed",
+    "reviewer": "",
+    "summary": "Overall detailed summary on the health of the Pull request",
+    "metrics": {
+        "linesOfCode": 0,
+        "codeCoverage": "A number out of 100 percent",
+        "securityScore": "A Score out of 10",
+        "performanceScore": "A Score out of 10",
+        "readabilityScore": "A Score out of 10"
+    },
+    "comments": [
+        {
+            "file": "src/main/resources/review_structure.json",
+            "line": 1,
+            "comment": "This is a test comment for the review structure JSON file.",
+            "severity": "CRITICAL | WARNING | SUGGESTION",
+            "suggestion": "Consider adding more detailed information about the review structure to improve clarity."
+        }
+    ],
+    "overallScore": "A number from 1 to 10",
+    "strengths": [
+        "List maximum 5 strengths of the code review, such as well-structured code, good documentation, efficient algorithms, etc."
+    ],
+    "weaknesses": [
+        "List maximum 5 weaknesses of the code review, such as lack of comments, poor naming conventions, inefficient algorithms, etc."
+    ],
+    "userProgress": "Based on past strength and weaknesses, describe how the user perfomed in this current PR"
+}

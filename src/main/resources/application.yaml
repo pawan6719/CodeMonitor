@@ -12,9 +12,6 @@ spring:
         chat:
           model: gemini-3.6-flash
 
-server:
-  port: 8081 
-
 github:
   api:
     url: https://api.github.com

@@ -12,6 +12,7 @@ import com.codekitchen.codereviewer.component.GithubClient;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ReviewService {
@@ -33,18 +34,18 @@ public class ReviewService {
     }
 
     @Async
-    public void reviewPullRequest(ReviewPayload payload) {
+    public CompletableFuture<Void> reviewPullRequest(ReviewPayload payload) {
         if (payload == null || payload.getPullRequest() == null) {
-            throw new IllegalArgumentException("Pull request payload is missing.");
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Pull request payload is missing."));
         }
 
         if (payload.getRepository() == null || payload.getRepositoryFullName() == null
                 || payload.getRepositoryFullName().isBlank()) {
-            throw new IllegalArgumentException("Repository details are missing from the webhook payload.");
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Repository details are missing from the webhook payload."));
         }
 
         if (payload.getPullRequestNumber() == null) {
-            throw new IllegalArgumentException("Pull request number is missing from the webhook payload.");
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Pull request number is missing from the webhook payload."));
         }
 
         String[] repositoryParts = payload.getRepositoryFullName().split("/", 2);
@@ -56,11 +57,12 @@ public class ReviewService {
         String owner = repositoryParts[0];
         String repo = repositoryParts[1];
 
+        try {
         List<GitHubFile> files = githubRestClient.fetchPullRequestFiles(owner, repo, payload.getPullRequestNumber());
 
         if (files.isEmpty()) {
-            throw new RuntimeException(
-                    "No changed files were found for pull request #" + payload.getPullRequestNumber() + ".");
+            return CompletableFuture.failedFuture(new RuntimeException(
+                    "No changed files were found for pull request #" + payload.getPullRequestNumber() + "."));
         }
 
         GenAIReviewSchema review = chatClient.reviewPullRequest(payload, files);
@@ -72,6 +74,11 @@ public class ReviewService {
         if (reviewPersistenceService != null) {
             reviewPersistenceService.saveReview(payload, "pull_request", review);
         }
+    } catch (Exception e){
+        return CompletableFuture.failedFuture(e);
+    }
+    return CompletableFuture.completedFuture(null);
+
     }
 
 }

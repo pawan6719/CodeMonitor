@@ -4,8 +4,8 @@ import com.codekitchen.codereviewer.model.Events;
 import com.codekitchen.codereviewer.model.ReviewPayload;
 import com.codekitchen.codereviewer.service.ReviewService;
 
-
-import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReviewController {
 
     private final ReviewService reviewService;
-
+    private static final Logger log = LoggerFactory.getLogger(ReviewController.class);
     public ReviewController(ReviewService reviewService) {
         this.reviewService = reviewService;
     }
@@ -36,17 +36,25 @@ public class ReviewController {
             return ResponseEntity.badRequest().body("This endpoint only accepts pull_request webhook events.");
         }
 
-        if (payload.getAction() != null && !payload.getAction().equalsIgnoreCase("opened")){
-            return ResponseEntity.ok().body("Review process does not run for " + payload.getAction() + " action on a PR");
+        if (payload.getAction() != null && !payload.getAction().equalsIgnoreCase("opened")) {
+            return ResponseEntity.ok()
+                    .body("Review process does not run for " + payload.getAction() + " action on a PR");
         }
-        try {
-            reviewService.reviewPullRequest(payload);
-            return ResponseEntity.ok("Review Process is in progress. Check the Pull request in some time");
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
-        } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Unable to process the pull request review: " + ex.getMessage());
+        if (payload.getRepositoryFullName() == null || !payload.getRepositoryFullName().contains("/")) {
+            return ResponseEntity.badRequest().body("Repository full name must be in owner/repo format.");
         }
+
+        if (payload.getPullRequestNumber() == null) {
+            return ResponseEntity.badRequest().body("Pull request number is missing from the webhook payload.");
+        }
+
+        // 2. Dispatch async work with non-blocking error handler
+        reviewService.reviewPullRequest(payload)
+                .exceptionally(ex -> {
+                    log.error("Async review failed for PR #{}: {}", payload.getPullRequestNumber(), ex.getMessage());
+                    return null;
+                });
+
+        return ResponseEntity.accepted().body("Review process started in background.");
     }
 }

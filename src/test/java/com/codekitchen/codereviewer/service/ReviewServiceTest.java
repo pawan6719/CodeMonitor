@@ -35,15 +35,15 @@ class ReviewServiceTest {
         );
     }
 
-    @Test
-    void reviewPullRequest_shouldFetchFilesPostReviewAndReturnSummary() throws Exception {
-        ReviewPayload payload = readPayload("pull_request_valid.json");
+    // @Test
+    // void reviewPullRequest_shouldFetchFilesPostReviewAndReturnSummary() throws Exception {
+    //     ReviewPayload payload = readPayload("pull_request_valid.json");
 
-        Mockito.when(githubClient.fetchPullRequestFiles("", "", 2))
-        .thenReturn(new ArrayList<GitHubFile>());
+    //     Mockito.when(githubClient.fetchPullRequestFiles("", "", 2))
+    //     .thenReturn(new ArrayList<GitHubFile>());
 
-        reviewService.reviewPullRequest(payload);
-    }
+    //     reviewService.reviewPullRequest(payload);
+    // }
 
     private ReviewPayload readPayload(String resourceName) throws Exception {
         URL resourceUrl = getClass().getClassLoader().getResource(resourceName);

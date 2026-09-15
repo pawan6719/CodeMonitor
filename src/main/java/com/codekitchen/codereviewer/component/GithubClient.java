@@ -5,17 +5,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import com.codekitchen.codereviewer.model.GenAIReviewSchema;
+import com.codekitchen.codereviewer.service.ReviewService;
 
 @Component
 public class GithubClient {
 
         private final RestClient restClient;
+        private static final Logger log = LoggerFactory.getLogger(GithubClient.class);
 
         public GithubClient(
                         @Value("${github.api.url:https://api.github.com}") String githubApiUrl,
@@ -38,69 +42,46 @@ public class GithubClient {
                                 .retrieve()
                                 .body(new ParameterizedTypeReference<>() {
                                 });
-
+                log.info(files == null ? "Error retrieving Files" : "Retrieved files count " + files.size());
                 return files == null ? new ArrayList<>() : files;
         }
 
-        public void postPullRequestReview(String owner, String repo, int pullRequestNumber, GenAIReviewSchema review) {
-                Map<String, Object> reviewRequest = Map.of(
-                                "event", "COMMENT",
-                                "body", review);
-
-                restClient.post()
-                                .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/reviews", owner, repo, pullRequestNumber)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .body(reviewRequest)
-                                .retrieve()
-                                .body(Map.class);
-        }
-
         public String postPullRequestReview(String owner, String repo, GenAIReviewSchema payload) {
-        // 1. Build the main summary body string combining metadata
-        String overallSummary = String.format(
-            "%s\n\n### Metrics Summary\n* **Overall Score:** %s/10\n* **Security:** %s\n* **Performance:** %s\n\n### Progress\n%s",
-            payload.getSummary(),
-            payload.getOverallScore(),
-            payload.getMetrics().getSecurityScore(),
-            payload.getMetrics().getPerformanceScore()
-        );
+                // 1. Build the main summary body string combining metadata
+                String overallSummary = String.format(
+                                "%s\n\n### Metrics Summary\n* **Overall Score:** %s/10\n* **Security:** %s\n* **Performance:** %s\n\n### Progress\n%s",
+                                payload.getSummary(),
+                                payload.getOverallScore(),
+                                payload.getMetrics().getSecurityScore(),
+                                payload.getMetrics().getPerformanceScore());
 
-        // 2. Map your internal comment array to GitHub line-level comments
-        List<GithubLineComment> githubComments = payload.getComments().stream()
-            .map(c -> new GithubLineComment(
-                c.getFile(),
-                Integer.parseInt(c.getLine()),
-                "RIGHT", // Places comment on the newly introduced/modified code line
-                String.format("**[%s]** %s\n\n*Suggestion:* %s", c.getSeverity(), c.getComment(), c.getSuggestion())
-            ))
-            .collect(Collectors.toList());
+                // 2. Map your internal comment array to GitHub line-level comments
+                List<GithubLineComment> githubComments = payload.getComments().stream()
+                                .map(c -> new GithubLineComment(
+                                                c.getFile(),
+                                                Integer.parseInt(c.getLine()),
+                                                "RIGHT", // Places comment on the newly introduced/modified code line
+                                                String.format("**[%s]** %s\n\n*Suggestion:* %s", c.getSeverity(),
+                                                                c.getComment(), c.getSuggestion())))
+                                .collect(Collectors.toList());
 
-        // 3. Construct the collective payload
-        GithubReviewRequest gitHubPayload = new GithubReviewRequest(
-            overallSummary,
-            "COMMENT", // Can be "COMMENT", "APPROVE", or "REQUEST_CHANGES"
-            payload.getCommitId(),
-            githubComments
-        );
+                // 3. Construct the collective payload
+                GithubReviewRequest gitHubPayload = new GithubReviewRequest(
+                                overallSummary,
+                                "COMMENT", // Can be "COMMENT", "APPROVE", or "REQUEST_CHANGES"
+                                payload.getCommitId(),
+                                githubComments);
 
-        // 4. Fire POST to GitHub
-        return this.restClient.post()
-            .uri("/repos/{owner}/{repo}/pulls/{prNumber}/reviews", owner, repo, payload.getPullRequestNumber())
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(gitHubPayload)
-            .retrieve()
-            .body(String.class);
-    }
-        public void postPushRequestReview(String owner, String repo, String commitSha, String reviewSummary) {
-                Map<String, Object> reviewComment = Map.of(
-                                "body", reviewSummary);
+                log.info("Overall Summary for the review is " + overallSummary);
 
-                restClient.post()
-                                .uri("/repos/{owner}/{repo}/commits/{commitSha}/comments", owner, repo, commitSha)
+                // 4. Fire POST to GitHub
+                return this.restClient.post()
+                                .uri("/repos/{owner}/{repo}/pulls/{prNumber}/reviews", owner, repo,
+                                                payload.getPullRequestNumber())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .body(reviewComment)
+                                .body(gitHubPayload)
                                 .retrieve()
-                                .body(Map.class);
+                                .body(String.class);
         }
 
         public record GithubReviewRequest(

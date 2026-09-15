@@ -3,8 +3,8 @@ spring:
     name: codereviewer
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017}
-      database: user-review-profile
+      uri: ${MONGODB_URI}
+
   ai:
     google:
       genai:

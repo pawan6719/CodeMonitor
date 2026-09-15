@@ -65,7 +65,7 @@ public class ReviewService {
 
         GenAIReviewSchema review = chatClient.reviewPullRequest(payload, files);
         log.info(String.format("AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s", review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
-        githubRestClient.postPullRequestReview(owner, repo, payload.getPullRequestNumber(), review);
+        githubRestClient.postPullRequestReview(owner, repo, review);
 
         if (reviewPersistenceService != null) {
             reviewPersistenceService.saveReview(payload, "pull_request", review);

@@ -4,6 +4,7 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI}
+      uuid-representation: standard
 
   ai:
     google:

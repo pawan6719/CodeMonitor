@@ -46,14 +46,15 @@ public class GithubClient {
                 return files == null ? new ArrayList<>() : files;
         }
 
-        public String postPullRequestReview(String owner, String repo, GenAIReviewSchema payload) {
+        public String postPullRequestReview(String owner, String repo, String commitId, GenAIReviewSchema payload) {
                 // 1. Build the main summary body string combining metadata
                 String overallSummary = String.format(
                                 "%s\n\n### Metrics Summary\n* **Overall Score:** %s/10\n* **Security:** %s\n* **Performance:** %s\n\n### Progress\n%s",
                                 payload.getSummary(),
                                 payload.getOverallScore(),
                                 payload.getMetrics().getSecurityScore(),
-                                payload.getMetrics().getPerformanceScore());
+                                payload.getMetrics().getPerformanceScore(),
+                        payload.getUserProgress());
 
                 // 2. Map your internal comment array to GitHub line-level comments
                 List<GithubLineComment> githubComments = payload.getComments().stream()
@@ -69,7 +70,7 @@ public class GithubClient {
                 GithubReviewRequest gitHubPayload = new GithubReviewRequest(
                                 overallSummary,
                                 "COMMENT", // Can be "COMMENT", "APPROVE", or "REQUEST_CHANGES"
-                                payload.getCommitId(),
+                                commitId,
                                 githubComments);
 
                 log.info("Overall Summary for the review is " + overallSummary);

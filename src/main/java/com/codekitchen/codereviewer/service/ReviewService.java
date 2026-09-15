@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.codekitchen.codereviewer.model.ReviewPayload;
+import com.google.api.client.json.Json;
 import com.codekitchen.codereviewer.component.GeminiChatClient;
 import com.codekitchen.codereviewer.component.GithubClient;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;
@@ -64,8 +65,11 @@ public class ReviewService {
         }
 
         GenAIReviewSchema review = chatClient.reviewPullRequest(payload, files);
+        String commitId = payload.getHeadSha();
         log.info(String.format("AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s", review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
-        githubRestClient.postPullRequestReview(owner, repo, review);
+        log.info(review.toString());
+        log.info("Commit Id is - " + commitId);
+        githubRestClient.postPullRequestReview(owner, repo, commitId, review);
 
         if (reviewPersistenceService != null) {
             reviewPersistenceService.saveReview(payload, "pull_request", review);

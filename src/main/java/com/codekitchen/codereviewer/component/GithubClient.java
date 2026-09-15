@@ -1,26 +1,17 @@
 package com.codekitchen.codereviewer.component;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.hc.client5.http.HttpRequestRetryStrategy;
-import org.apache.hc.client5.http.config.ConnectionConfig;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.core5.http.io.SocketConfig;
-import org.apache.hc.core5.util.TimeValue;
-import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import com.codekitchen.codereviewer.model.GenAIReviewSchema;
@@ -35,45 +26,14 @@ public class GithubClient {
             @Value("${github.api.url:https://api.github.com}") String githubApiUrl,
             @Value("${github.token:}") String githubToken) {
 
-        // 1. Connection configuration with TTL and stale connection validation
-        ConnectionConfig connectionConfig = ConnectionConfig.custom()
-                .setTimeToLive(TimeValue.ofSeconds(30))
-                .setValidateAfterInactivity(TimeValue.ofSeconds(5))
-                .setConnectTimeout(Timeout.ofSeconds(10))
+        // Java 21 native HttpClient with HTTP/2 and buffered requests (avoids GCP Egress / GitHub chunked transfer broken pipe)
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .connectTimeout(Duration.ofSeconds(10))
                 .build();
 
-        // 2. Connection Manager using ConnectionConfig
-        PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
-                .setDefaultConnectionConfig(connectionConfig)
-                .setDefaultSocketConfig(SocketConfig.custom()
-                        .setSoTimeout(Timeout.ofSeconds(15))
-                        .build())
-                .setMaxConnTotal(50)
-                .setMaxConnPerRoute(20)
-                .build();
-
-        // 3. Request configuration (response and request timeouts)
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setResponseTimeout(Timeout.ofSeconds(30))
-                .setConnectionRequestTimeout(Timeout.ofSeconds(10))
-                .build();
-
-        // 3. Retry strategy (safely retry dropped connections up to 3 times)
-        HttpRequestRetryStrategy retryStrategy = new DefaultHttpRequestRetryStrategy(
-                3, 
-                TimeValue.ofSeconds(1)
-        );
-
-        // 4. Build HttpClient with background eviction of idle connections
-        CloseableHttpClient httpClient = HttpClients.custom()
-                .setConnectionManager(connectionManager)
-                .setDefaultRequestConfig(requestConfig)
-                .setRetryStrategy(retryStrategy)
-                .evictIdleConnections(TimeValue.ofSeconds(15)) // Purge connections idle for 15s
-                .evictExpiredConnections()
-                .build();
-
-        HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(30));
 
         RestClient.Builder githubBuilder = RestClient.builder()
                 .requestFactory(requestFactory)

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import com.codekitchen.codereviewer.model.GenAIReviewSchema;
@@ -25,6 +26,7 @@ public class GithubClient {
                         @Value("${github.api.url:https://api.github.com}") String githubApiUrl,
                         @Value("${github.token:}") String githubToken) {
                 RestClient.Builder githubBuilder = RestClient.builder()
+                                .requestFactory(new HttpComponentsClientHttpRequestFactory()) 
                                 .baseUrl(githubApiUrl)
                                 .defaultHeader("Accept", "application/vnd.github+json")
                                 .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
@@ -55,7 +57,7 @@ public class GithubClient {
                                 payload.getOverallScore(),
                                 payload.getMetrics().getSecurityScore(),
                                 payload.getMetrics().getPerformanceScore(),
-                        payload.getUserProgress());
+                                payload.getUserProgress());
 
                 // 2. Map your internal comment array to GitHub line-level comments
                 List<GithubLineComment> githubComments = payload.getComments().stream()

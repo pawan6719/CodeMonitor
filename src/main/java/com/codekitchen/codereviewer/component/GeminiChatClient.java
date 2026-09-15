@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -17,12 +19,15 @@ import org.springframework.stereotype.Component;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;
 import com.codekitchen.codereviewer.model.*;
 import com.codekitchen.codereviewer.repository.*;
+
 import tools.jackson.databind.ObjectMapper;
 
 @Component 
 public class GeminiChatClient {
     
     private final GoogleGenAiChatModel googleGenAiChatModel;
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiChatClient.class);
 
     private final ReviewRepository reviewRepository;
     public GeminiChatClient(GoogleGenAiChatModel chatModel, ReviewRepository reviewRepository){
@@ -38,10 +43,6 @@ public class GeminiChatClient {
         return jsonResponse;
     }
 
-    public String runPushReviewPrompt(Prompt prompt){
-        return "";
-    }
-
 private Prompt buildReviewPrompt(ReviewPayload payload, List<GitHubFile> files) {
         String expectedJsonFormat = "";
         try (InputStream inputStream = ResourceReader.class.getClassLoader().getResourceAsStream("genai_review_response_structure.json")) {
@@ -50,8 +51,14 @@ private Prompt buildReviewPrompt(ReviewPayload payload, List<GitHubFile> files) 
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        Optional<ReviewDocument> userDocs = reviewRepository.findTopByUserIdOrderByCreatedAtDesc(payload.getPullRequestUserLogin());
-        String historyContext = buildHistoricalContext(userDocs);
+        String historyContext = "";
+        try{
+        Optional<ReviewDocument> maybeDoc = reviewRepository.findByUserId(payload.getPullRequestUserLogin());
+        historyContext = buildHistoricalContext(maybeDoc);
+        } catch (Exception e) {
+            log.error("Unable to fetch historical context for " + payload.getPullRequestUserLogin(), e);
+            historyContext = "Encountered an error while fetch historical context. Proceed to review without context";
+        }
 
         StringBuilder prDetails = new StringBuilder();
         prDetails.append("Repository: ").append(payload.getRepositoryFullName()).append("\n");
@@ -98,6 +105,7 @@ private Prompt buildReviewPrompt(ReviewPayload payload, List<GitHubFile> files) 
                 "prDetails", prDetails,
                 "expectedJsonFormat", expectedJsonFormat
         ));
+        log.info("Prompt for GenAI is ready");
         return prompt;
     }
 

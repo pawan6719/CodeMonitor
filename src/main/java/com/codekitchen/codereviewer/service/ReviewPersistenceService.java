@@ -27,7 +27,7 @@ public class ReviewPersistenceService {
         {
             throw new RuntimeException("Payload Pull Request does not match GenAI response");
         }
-        String userId = eventType == Events.PULL_REQUEST.name() ? payload.getPullRequestUserLogin():payload.getSenderLogin();
+        String userId = eventType.equalsIgnoreCase(Events.PULL_REQUEST.name()) ? payload.getPullRequestUserLogin():payload.getSenderLogin();
         Optional<ReviewDocument> maybeReviewDocument = reviewRepository.findTopByUserIdOrderByCreatedAtDesc(userId);
         ReviewDocument reviewDocument = new ReviewDocument();
         List<PRReviewSchema> earlierReviews;

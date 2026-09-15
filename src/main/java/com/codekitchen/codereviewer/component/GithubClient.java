@@ -2,9 +2,19 @@ package com.codekitchen.codereviewer.component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.apache.hc.client5.http.HttpRequestRetryStrategy;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.io.SocketConfig;
+import org.apache.hc.core5.util.TimeValue;
+import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +24,6 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import com.codekitchen.codereviewer.model.GenAIReviewSchema;
-import com.codekitchen.codereviewer.service.ReviewService;
 
 @Component
 public class GithubClient {
@@ -23,30 +32,77 @@ public class GithubClient {
         private static final Logger log = LoggerFactory.getLogger(GithubClient.class);
 
         public GithubClient(
-                        @Value("${github.api.url:https://api.github.com}") String githubApiUrl,
-                        @Value("${github.token:}") String githubToken) {
-                RestClient.Builder githubBuilder = RestClient.builder()
-                                .requestFactory(new HttpComponentsClientHttpRequestFactory()) 
-                                .baseUrl(githubApiUrl)
-                                .defaultHeader("Accept", "application/vnd.github+json")
-                                .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
-                                .defaultHeader("User-Agent", "CodeMonitor");
+            @Value("${github.api.url:https://api.github.com}") String githubApiUrl,
+            @Value("${github.token:}") String githubToken) {
 
-                if (githubToken != null && !githubToken.isBlank()) {
-                        githubBuilder = githubBuilder.defaultHeader("Authorization", "Bearer " + githubToken);
-                }
+        // 1. Connection configuration with TTL and stale connection validation
+        ConnectionConfig connectionConfig = ConnectionConfig.custom()
+                .setTimeToLive(TimeValue.ofSeconds(30))
+                .setValidateAfterInactivity(TimeValue.ofSeconds(5))
+                .setConnectTimeout(Timeout.ofSeconds(10))
+                .build();
 
-                this.restClient = githubBuilder.build();
+        // 2. Connection Manager using ConnectionConfig
+        PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setDefaultConnectionConfig(connectionConfig)
+                .setDefaultSocketConfig(SocketConfig.custom()
+                        .setSoTimeout(Timeout.ofSeconds(15))
+                        .build())
+                .setMaxConnTotal(50)
+                .setMaxConnPerRoute(20)
+                .build();
+
+        // 3. Request configuration (response and request timeouts)
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setResponseTimeout(Timeout.ofSeconds(30))
+                .setConnectionRequestTimeout(Timeout.ofSeconds(10))
+                .build();
+
+        // 3. Retry strategy (safely retry dropped connections up to 3 times)
+        HttpRequestRetryStrategy retryStrategy = new DefaultHttpRequestRetryStrategy(
+                3, 
+                TimeValue.ofSeconds(1)
+        );
+
+        // 4. Build HttpClient with background eviction of idle connections
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                .setRetryStrategy(retryStrategy)
+                .evictIdleConnections(TimeValue.ofSeconds(15)) // Purge connections idle for 15s
+                .evictExpiredConnections()
+                .build();
+
+        HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+
+        RestClient.Builder githubBuilder = RestClient.builder()
+                .requestFactory(requestFactory)
+                .baseUrl(githubApiUrl)
+                .defaultHeader("Accept", "application/vnd.github+json")
+                .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
+                .defaultHeader("User-Agent", "CodeMonitor");
+
+        if (githubToken != null && !githubToken.isBlank()) {
+            githubBuilder = githubBuilder.defaultHeader("Authorization", "Bearer " + githubToken);
         }
 
+        this.restClient = githubBuilder.build();
+    }
+
         public List<GitHubFile> fetchPullRequestFiles(String owner, String repo, int pullRequestNumber) {
-                List<GitHubFile> files = restClient.get()
-                                .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/files", owner, repo, pullRequestNumber)
-                                .retrieve()
-                                .body(new ParameterizedTypeReference<>() {
-                                });
-                log.info(files == null ? "Error retrieving Files" : "Retrieved files count " + files.size());
-                return files == null ? new ArrayList<>() : files;
+                try {
+                        List<GitHubFile> files = restClient.get()
+                                        .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/files", owner, repo,
+                                                        pullRequestNumber)
+                                        .retrieve()
+                                        .body(new ParameterizedTypeReference<>() {
+                                        });
+                        log.info(files == null ? "Error retrieving Files" : "Retrieved files count " + files.size());
+                        return files == null ? new ArrayList<>() : files;
+                } catch (Exception e) {
+                        log.error("Github Files API errored out. Review will not complete", e);
+                        return new ArrayList<>();
+                }
         }
 
         public String postPullRequestReview(String owner, String repo, String commitId, GenAIReviewSchema payload) {

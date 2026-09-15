@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: codereviewer-test
+  mongodb:
+    uri: mongodb://localhost:27017/testdb
+  ai:
+    google:
+      genai:
+        api-key: test-key
+        chat:
+          model: gemini-3.6-flash
+
+github:
+  api:
+    url: http://localhost:8089
+  token: test-token

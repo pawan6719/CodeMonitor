@@ -1,58 +1,203 @@
 package com.codekitchen.codereviewer.service;
 
-import com.codekitchen.codereviewer.component.*;
+import com.codekitchen.codereviewer.component.GeminiChatClient;
+import com.codekitchen.codereviewer.component.GithubClient;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;
-import com.codekitchen.codereviewer.model.*;
+import com.codekitchen.codereviewer.model.GenAIReviewSchema;
+import com.codekitchen.codereviewer.model.Metrics;
+import com.codekitchen.codereviewer.model.ReviewPayload;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
 class ReviewServiceTest {
 
     private ReviewService reviewService;
+
+    @Mock
     private GithubClient githubClient;
+
+    @Mock
     private GeminiChatClient geminiChatClient;
+
+    @Mock
     private ReviewPersistenceService reviewPersistenceService;
 
-    @BeforeEach
-    void setUp() throws Exception {
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-        githubClient = Mockito.mock(GithubClient.class);
-        geminiChatClient = Mockito.mock(GeminiChatClient.class);
-        reviewPersistenceService = Mockito.mock(ReviewPersistenceService.class);
+    @BeforeEach
+    void setUp() {
         reviewService = new ReviewService(
-               geminiChatClient, githubClient, reviewPersistenceService
+                geminiChatClient, githubClient, reviewPersistenceService
         );
     }
 
-    // @Test
-    // void reviewPullRequest_shouldFetchFilesPostReviewAndReturnSummary() throws Exception {
-    //     ReviewPayload payload = readPayload("pull_request_valid.json");
+    @Test
+    @DisplayName("Should successfully execute full PR review workflow")
+    void reviewPullRequest_shouldFetchFilesPostReviewAndSave() throws Exception {
+        ReviewPayload payload = readPayload("pull_request_valid.json");
 
-    //     Mockito.when(githubClient.fetchPullRequestFiles("", "", 2))
-    //     .thenReturn(new ArrayList<GitHubFile>());
+        List<GitHubFile> mockFiles = List.of(
+                new GitHubFile("src/Main.java", "modified", "@@ -1,3 +1,3 @@")
+        );
 
-    //     reviewService.reviewPullRequest(payload);
-    // }
+        GenAIReviewSchema mockReview = new GenAIReviewSchema();
+        mockReview.setProjectId("codereviewer");
+        mockReview.setPullRequestNumber("3");
+        mockReview.setOverallScore("9/10");
+        mockReview.setSummary("Great PR");
+        Metrics metrics = new Metrics();
+        mockReview.setMetrics(metrics);
+
+        when(githubClient.fetchPullRequestFiles("pawan6719", "CodeMonitor", 3))
+                .thenReturn(mockFiles);
+        when(geminiChatClient.reviewPullRequest(eq(payload), eq(mockFiles)))
+                .thenReturn(mockReview);
+        when(githubClient.postPullRequestReview(eq("pawan6719"), eq("CodeMonitor"), eq("29fd92e99337815f4563e85c4356bc3baecbe6df"), eq(mockReview)))
+                .thenReturn("SUCCESS");
+
+        reviewService.reviewPullRequest(payload);
+
+        verify(githubClient, times(1)).fetchPullRequestFiles("pawan6719", "CodeMonitor", 3);
+        verify(geminiChatClient, times(1)).reviewPullRequest(payload, mockFiles);
+        verify(githubClient, times(1)).postPullRequestReview("pawan6719", "CodeMonitor", "29fd92e99337815f4563e85c4356bc3baecbe6df", mockReview);
+        verify(reviewPersistenceService, times(1)).saveReview(payload, "pull_request", mockReview);
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when payload is null")
+    void reviewPullRequest_shouldThrowWhenPayloadIsNull() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reviewService.reviewPullRequest(null)
+        );
+        assertTrue(exception.getMessage().contains("Pull request payload is missing"));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when repository details are missing in payload")
+    void reviewPullRequest_shouldThrowWhenRepositoryIsMissing() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("pull_request", Map.of("number", 1));
+        ReviewPayload payload = new ReviewPayload(map);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reviewService.reviewPullRequest(payload)
+        );
+        assertTrue(exception.getMessage().contains("Repository details are missing from the webhook payload."));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when repository full_name is blank")
+    void reviewPullRequest_shouldThrowWhenRepositoryFullNameIsBlank() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("pull_request", Map.of("number", 1));
+        map.put("repository", Map.of("full_name", "   "));
+        ReviewPayload payload = new ReviewPayload(map);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reviewService.reviewPullRequest(payload)
+        );
+        assertTrue(exception.getMessage().contains("Repository details are missing from the webhook payload."));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when pull request number is missing")
+    void reviewPullRequest_shouldThrowWhenPullRequestNumberIsMissing() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("pull_request", Map.of("title", "No Number PR"));
+        map.put("repository", Map.of("full_name", "owner/repo"));
+        ReviewPayload payload = new ReviewPayload(map);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reviewService.reviewPullRequest(payload)
+        );
+        assertTrue(exception.getMessage().contains("Pull request number is missing from the webhook payload."));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when repository full_name is not owner/repo format")
+    void reviewPullRequest_shouldThrowWhenRepositoryFullNameFormatIsInvalid() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("pull_request", Map.of("number", 1));
+        map.put("repository", Map.of("full_name", "invalid-repo-name-without-slash"));
+        ReviewPayload payload = new ReviewPayload(map);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reviewService.reviewPullRequest(payload)
+        );
+        assertTrue(exception.getMessage().contains("Repository full name must be in owner/repo format"));
+    }
+
+    @Test
+    @DisplayName("Should throw RuntimeException when GitHubClient returns no changed files")
+    void reviewPullRequest_shouldThrowWhenNoChangedFilesFound() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("pull_request", Map.of("number", 42));
+        map.put("repository", Map.of("full_name", "owner/repo"));
+        ReviewPayload payload = new ReviewPayload(map);
+
+        when(githubClient.fetchPullRequestFiles("owner", "repo", 42))
+                .thenReturn(Collections.emptyList());
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> reviewService.reviewPullRequest(payload)
+        );
+        assertTrue(exception.getMessage().contains("No changed files were found for pull request #42."));
+    }
+
+    @Test
+    @DisplayName("Should work without error when reviewPersistenceService is null")
+    void reviewPullRequest_shouldWorkWhenPersistenceServiceIsNull() throws Exception {
+        ReviewService serviceWithoutPersistence = new ReviewService(geminiChatClient, githubClient, null);
+        ReviewPayload payload = readPayload("pull_request_valid.json");
+
+        List<GitHubFile> mockFiles = List.of(new GitHubFile("File.java", "added", "+ code"));
+        GenAIReviewSchema mockReview = new GenAIReviewSchema();
+        mockReview.setProjectId("test");
+        mockReview.setPullRequestNumber("3");
+        mockReview.setOverallScore("10");
+
+        when(githubClient.fetchPullRequestFiles("pawan6719", "CodeMonitor", 3)).thenReturn(mockFiles);
+        when(geminiChatClient.reviewPullRequest(any(), any())).thenReturn(mockReview);
+
+        serviceWithoutPersistence.reviewPullRequest(payload);
+
+        verify(githubClient, times(1)).postPullRequestReview(eq("pawan6719"), eq("CodeMonitor"), eq("29fd92e99337815f4563e85c4356bc3baecbe6df"), eq(mockReview));
+    }
 
     private ReviewPayload readPayload(String resourceName) throws Exception {
         URL resourceUrl = getClass().getClassLoader().getResource(resourceName);
         Path path = Paths.get(resourceUrl.toURI());
         String payload = Files.readString(path);
-        Map<String, Object> mapPayload = new HashMap<String, Object>();
-        mapPayload = new ObjectMapper().readValue(payload, Map.class);
-        ReviewPayload reviewPayload = new ReviewPayload();
-        reviewPayload.setPayload(mapPayload);
-        return reviewPayload;
+        Map<String, Object> mapPayload = objectMapper.readValue(payload, new TypeReference<Map<String, Object>>() {});
+        return new ReviewPayload(mapPayload);
     }
 }
+

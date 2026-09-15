@@ -7,7 +7,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.codekitchen.codereviewer.model.ReviewPayload;
-import com.google.api.client.json.Json;
 import com.codekitchen.codereviewer.component.GeminiChatClient;
 import com.codekitchen.codereviewer.component.GithubClient;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;

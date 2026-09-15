@@ -52,14 +52,28 @@ public class GithubClient {
         }
 
         public List<GitHubFile> fetchPullRequestFiles(String owner, String repo, int pullRequestNumber) {
-                List<GitHubFile> files = restClient.get()
-                                .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/files", owner, repo,
-                                                pullRequestNumber)
-                                .retrieve()
-                                .body(new ParameterizedTypeReference<>() {
-                                });
-                log.info(files == null ? "Error retrieving Files" : "Retrieved files count " + files.size());
-                return files == null ? new ArrayList<>() : files;
+                int maxRetries = 3;
+                for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                                List<GitHubFile> files = restClient.get()
+                                                .uri("/repos/{owner}/{repo}/pulls/{pullNumber}/files", owner, repo,
+                                                                pullRequestNumber)
+                                                .header("Connection", "keep-alive")
+                                                .retrieve()
+                                                .body(new ParameterizedTypeReference<>() {
+                                                });
+                                log.info(files == null ? "Error retrieving Files" : "Retrieved files count " + files.size());
+                                return files == null ? new ArrayList<>() : files;
+                        } catch (Exception e) {
+                                log.warn("Attempt {}/{} failed fetching files for {}/{} PR {}: {}", attempt, maxRetries, owner, repo, pullRequestNumber, e.getMessage());
+                                if (attempt == maxRetries) {
+                                        log.error("Github Files API errored out after {} retries. Review will not complete", maxRetries, e);
+                                        return new ArrayList<>();
+                                }
+                                try { Thread.sleep(500L * attempt); } catch (InterruptedException ignored) {}
+                        }
+                }
+                return new ArrayList<>();
         }
 
         public String postPullRequestReview(String owner, String repo, String commitId, GenAIReviewSchema payload) {
@@ -72,8 +86,7 @@ public class GithubClient {
                                 payload.getMetrics().getPerformanceScore(),
                                 payload.getUserProgress());
 
-                // 2. Map your internal comment array to GitHub line-level comments (skipping
-                // invalid line numbers or null comments)
+                // 2. Map your internal comment array to GitHub line-level comments (skipping invalid line numbers or null comments)
                 List<GithubLineComment> githubComments = new ArrayList<>();
                 if (payload.getComments() != null) {
                         for (Comment c : payload.getComments()) {
@@ -85,14 +98,11 @@ public class GithubClient {
                                         githubComments.add(new GithubLineComment(
                                                         c.getFile(),
                                                         lineNumber,
-                                                        "RIGHT", // Places comment on the newly introduced/modified code
-                                                                 // line
-                                                        String.format("**[%s]** %s\n\n*Suggestion:* %s",
-                                                                        c.getSeverity(),
+                                                        "RIGHT",
+                                                        String.format("**[%s]** %s\n\n*Suggestion:* %s", c.getSeverity(),
                                                                         c.getComment(), c.getSuggestion())));
                                 } catch (NumberFormatException e) {
-                                        log.warn("Skipping comment on file {} due to invalid line number: {}",
-                                                        c.getFile(), c.getLine());
+                                        log.warn("Skipping comment on file {} due to invalid line number: {}", c.getFile(), c.getLine());
                                 }
                         }
                 }
@@ -106,14 +116,28 @@ public class GithubClient {
 
                 log.info("Overall Summary for the review is " + overallSummary);
 
-                // 4. Fire POST to GitHub
-                return this.restClient.post()
-                                .uri("/repos/{owner}/{repo}/pulls/{prNumber}/reviews", owner, repo,
-                                                payload.getPullRequestNumber())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .body(gitHubPayload)
-                                .retrieve()
-                                .body(String.class);
+                // 4. Fire POST to GitHub with retry logic
+                int maxRetries = 3;
+                for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                                return this.restClient.post()
+                                                .uri("/repos/{owner}/{repo}/pulls/{prNumber}/reviews", owner, repo,
+                                                                payload.getPullRequestNumber())
+                                                .header("Connection", "keep-alive")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .body(gitHubPayload)
+                                                .retrieve()
+                                                .body(String.class);
+                        } catch (Exception e) {
+                                log.warn("Attempt {}/{} failed posting review for {}/{} PR {}: {}", attempt, maxRetries, owner, repo, payload.getPullRequestNumber(), e.getMessage());
+                                if (attempt == maxRetries) {
+                                        log.error("Github POST review API errored out after {} retries.", maxRetries, e);
+                                        throw e;
+                                }
+                                try { Thread.sleep(500L * attempt); } catch (InterruptedException ignored) {}
+                        }
+                }
+                return null;
         }
 
         public record GithubReviewRequest(

@@ -1,18 +1,15 @@
 spring:
   application:
     name: codereviewer
-  data:
-    mongodb:
-      uri: ${MONGODB_URI}
-      uuid-representation: standard
-
+  mongodb:
+    uri: ${MONGODB_URI}
   ai:
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
         chat:
           model: gemini-3.6-flash
-          
+
 github:
   api:
     url: https://api.github.com

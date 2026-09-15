@@ -9,6 +9,5 @@ import java.util.Optional;
 @Repository
 public interface ReviewRepository extends MongoRepository<ReviewDocument, String> {
     Optional<ReviewDocument> findByUserId(String userId);
-    Optional<ReviewDocument> findTopByUserIdOrderByCreatedAtDesc(String userId);
 }
 

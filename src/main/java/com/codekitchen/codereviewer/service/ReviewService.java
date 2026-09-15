@@ -67,7 +67,6 @@ public class ReviewService {
         String commitId = payload.getHeadSha();
         log.info(String.format("AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s", review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
         log.info(review.toString());
-        log.info("Commit Id is - " + commitId);
         githubRestClient.postPullRequestReview(owner, repo, commitId, review);
 
         if (reviewPersistenceService != null) {

@@ -61,7 +61,7 @@ class ReviewPersistenceServiceTest {
         metrics.setReadabilityScore("9/10");
         review.setMetrics(metrics);
 
-        when(reviewRepository.findTopByUserIdOrderByCreatedAtDesc("alice")).thenReturn(Optional.empty());
+        when(reviewRepository.findByUserId("alice")).thenReturn(Optional.empty());
         when(reviewRepository.save(any(ReviewDocument.class))).thenAnswer(invocation -> {
             ReviewDocument doc = invocation.getArgument(0);
             doc.setId("generated-doc-id-1");
@@ -127,7 +127,7 @@ class ReviewPersistenceServiceTest {
         existingList.add(new PRReviewSchema("First PR Summary", "url-1", "20", "80%", "7", "7", "7", "7", List.of(), List.of(), Instant.now()));
         existingDoc.setPrReviewSchemas(existingList);
 
-        when(reviewRepository.findTopByUserIdOrderByCreatedAtDesc("bob")).thenReturn(Optional.of(existingDoc));
+        when(reviewRepository.findByUserId("bob")).thenReturn(Optional.of(existingDoc));
         when(reviewRepository.save(any(ReviewDocument.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ReviewDocument saved = persistenceService.saveReview(payload, Events.PULL_REQUEST.name(), review);
@@ -163,13 +163,13 @@ class ReviewPersistenceServiceTest {
         Metrics metrics = new Metrics();
         review.setMetrics(metrics);
 
-        when(reviewRepository.findTopByUserIdOrderByCreatedAtDesc("pusher-user")).thenReturn(Optional.empty());
+        when(reviewRepository.findByUserId("pusher-user")).thenReturn(Optional.empty());
         when(reviewRepository.save(any(ReviewDocument.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ReviewDocument saved = persistenceService.saveReview(payload, "PUSH", review);
 
         assertEquals("pusher-user", saved.getUserId());
-        verify(reviewRepository).findTopByUserIdOrderByCreatedAtDesc("pusher-user");
+        verify(reviewRepository).findByUserId("pusher-user");
     }
 
     @Test

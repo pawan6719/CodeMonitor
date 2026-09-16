@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -35,24 +36,41 @@ class ReviewControllerTest {
     @MockitoBean
     private ReviewService reviewService;
 
+    @MockitoBean
+    private com.codekitchen.codereviewer.component.SignatureValidator signatureValidator;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    @DisplayName("Should return 202 Accepted when valid pull request opened webhook is received with X-GitHub-Event header")
-    void reviewPull_shouldReturnOkWithValidPullRequestPayload() throws Exception {
+    @DisplayName("Should return 401 when signature is missing")
+    void reviewPull_shouldReturn401WhenSignatureMissing() throws Exception {
         String payload = readResource("pull_request_valid.json");
-
-        when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
-                .thenReturn(CompletableFuture.completedFuture(null));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
                         .content(payload))
-                .andExpect(status().isAccepted())
-                .andExpect(content().string("Review process started in background."));
+                .andExpect(status().isUnauthorized());
 
-        verify(reviewService, times(1)).reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class));
+        verify(reviewService, never()).reviewPullRequest(any());
+    }
+
+    @Test
+    @DisplayName("Should return 202 Accepted when valid pull request opened webhook is received with valid signature")
+    void reviewPull_shouldReturnOkWithValidPullRequestPayload() throws Exception {
+        String payload = readResource("pull_request_valid.json");
+        String signature = "sha256=expected_signature"; // In a real test, compute actual HMAC
+
+        when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
+        
+        mockMvc.perform(post("/api/review/pull")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", signature)
+                        .content(payload))
+                .andExpect(status().isAccepted());
     }
 
     @Test
@@ -60,11 +78,13 @@ class ReviewControllerTest {
     void reviewPull_shouldReturnOkWhenEventHeaderIsOmitted() throws Exception {
         String payload = readResource("pull_request_valid.json");
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
         when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isAccepted())
                 .andExpect(content().string("Review process started in background."));
@@ -76,10 +96,12 @@ class ReviewControllerTest {
     @DisplayName("Should return 400 Bad Request when X-GitHub-Event is not pull_request")
     void reviewPull_shouldReturnBadRequestWhenEventHeaderIsInvalid() throws Exception {
         String payload = readResource("pull_request_valid.json");
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "push")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("This endpoint only accepts pull_request webhook events."));
@@ -93,10 +115,12 @@ class ReviewControllerTest {
         Map<String, Object> map = objectMapper.readValue(readResource("pull_request_valid.json"), new TypeReference<Map<String, Object>>() {});
         map.put("action", "synchronize");
         String payload = objectMapper.writeValueAsString(map);
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Review process does not run for synchronize action on a PR"));
@@ -112,9 +136,12 @@ class ReviewControllerTest {
         map.put("repository", Map.of("full_name", "owner/repo"));
         String payload = objectMapper.writeValueAsString(map);
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
+
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Expected a valid GitHub pull request webhook payload."));
@@ -130,9 +157,12 @@ class ReviewControllerTest {
         map.put("pull_request", Map.of("number", 1));
         String payload = objectMapper.writeValueAsString(map);
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
+
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Expected a valid GitHub pull request webhook payload."));
@@ -149,9 +179,12 @@ class ReviewControllerTest {
         map.put("repository", Map.of("full_name", "invalid-repo"));
         String payload = objectMapper.writeValueAsString(map);
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
+
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Repository full name must be in owner/repo format."));
@@ -168,9 +201,12 @@ class ReviewControllerTest {
         map.put("repository", Map.of("full_name", "owner/repo"));
         String payload = objectMapper.writeValueAsString(map);
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
+
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string("Pull request number is missing from the webhook payload."));
@@ -183,12 +219,14 @@ class ReviewControllerTest {
     void reviewPull_shouldHandleBackgroundExceptionGracefully() throws Exception {
         String payload = readResource("pull_request_valid.json");
 
+        when(signatureValidator.isValid(any(), any())).thenReturn(true);
         when(reviewService.reviewPullRequest(ArgumentMatchers.any(ReviewPayload.class)))
                 .thenReturn(CompletableFuture.failedFuture(new RuntimeException("GitHub API error")));
 
         mockMvc.perform(post("/api/review/pull")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-GitHub-Event", "pull_request")
+                        .header("X-Hub-Signature-256", "sha256=valid")
                         .content(payload))
                 .andExpect(status().isAccepted())
                 .andExpect(content().string("Review process started in background."));

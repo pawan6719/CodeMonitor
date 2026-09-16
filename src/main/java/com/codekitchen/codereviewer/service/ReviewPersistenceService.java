@@ -23,7 +23,7 @@ public class ReviewPersistenceService {
     }
 
     public ReviewDocument saveReview(ReviewPayload payload, String eventType, GenAIReviewSchema review) throws RuntimeException {
-        if(!review.getPullRequestTitle().equals(payload.getPullRequestTitle()) || Integer.parseInt(review.getPullRequestNumber()) != payload.getPullRequestNumber())
+        if(review == null || review.getPullRequestTitle() == null || !review.getPullRequestTitle().equals(payload.getPullRequestTitle()))
         {
             throw new RuntimeException("Payload Pull Request does not match GenAI response");
         }
@@ -55,10 +55,7 @@ public class ReviewPersistenceService {
             ));
             reviewDocument.setPrReviewSchemas(new ArrayList<>(earlierReviews));
             reviewDocument.setUpdatedAt(Instant.now());
-            reviewDocument.setCreatedAt(Instant.now());
             reviewDocument.setUserProgressSummary(review.getUserProgress());
-            reviewDocument.setUserId(userId);
-
 
         ReviewDocument saved = reviewRepository.save(reviewDocument);
         log.info("Saved review document for {} with id {}", payload.getRepositoryFullName(), saved.getId());

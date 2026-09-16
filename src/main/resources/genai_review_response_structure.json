@@ -5,7 +5,7 @@
     "pullRequestTitle": "",
     "pullRequestDescription": "",
     "pullRequestAuthor": "",
-    "commit_id": "The sha of the commit being reviewed",
+    "commitId": "The sha of the commit being reviewed",
     "reviewer": "",
     "summary": "Overall detailed summary on the health of the Pull request",
     "metrics": {

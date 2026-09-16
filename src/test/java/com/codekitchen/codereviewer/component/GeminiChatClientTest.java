@@ -46,7 +46,7 @@ class GeminiChatClientTest {
 
     @Test
     @DisplayName("Should build prompt with historical context, call model, and parse GenAIReviewSchema correctly")
-    void reviewPullRequest_withHistoricalContext() {
+    void reviewPullRequest_withHistoricalContext() throws Exception {
         ReviewPayload payload = new ReviewPayload(Map.of(
                 "pull_request", Map.of(
                         "number", 4,
@@ -134,7 +134,7 @@ class GeminiChatClientTest {
 
     @Test
     @DisplayName("Should build prompt when no historical reviews exist for user")
-    void reviewPullRequest_withoutHistoricalContext() {
+    void reviewPullRequest_withoutHistoricalContext() throws Exception {
         ReviewPayload payload = new ReviewPayload(Map.of(
                 "pull_request", Map.of(
                         "number", 1,

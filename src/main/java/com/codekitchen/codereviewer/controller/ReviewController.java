@@ -3,6 +3,11 @@ package com.codekitchen.codereviewer.controller;
 import com.codekitchen.codereviewer.model.Events;
 import com.codekitchen.codereviewer.model.ReviewPayload;
 import com.codekitchen.codereviewer.service.ReviewService;
+import com.codekitchen.codereviewer.component.SignatureValidator;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,15 +23,40 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReviewController {
 
     private final ReviewService reviewService;
+    private final SignatureValidator signatureValidator;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private static final Logger log = LoggerFactory.getLogger(ReviewController.class);
-    public ReviewController(ReviewService reviewService) {
+
+    public ReviewController(ReviewService reviewService, SignatureValidator signatureValidator) {
         this.reviewService = reviewService;
+        this.signatureValidator = signatureValidator;
+    }
+
+    private ReviewPayload parsePayload(String payload) {
+        try {
+            Map<String, Object> map = objectMapper.readValue(payload, new TypeReference<Map<String, Object>>() {});
+            return new ReviewPayload(map);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse JSON", e);
+        }
     }
 
     @PostMapping("/pull")
     public ResponseEntity<String> reviewPull(
-            @RequestBody ReviewPayload payload,
-            @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
+            @RequestBody String requestBody,
+            @RequestHeader(value = "X-GitHub-Event", required = false) String eventType,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature) {
+
+        if (!signatureValidator.isValid(signature, requestBody)) {
+            return ResponseEntity.status(401).body("Invalid or missing GitHub signature.");
+        }
+
+        ReviewPayload payload;
+        try {
+            payload = parsePayload(requestBody);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to parse request payload.");
+        }
 
         if (payload == null || payload.getPullRequest() == null || payload.getPullRequest().isEmpty()
                 || payload.getRepository() == null || payload.getRepository().isEmpty()) {

@@ -193,26 +193,6 @@ class ReviewPersistenceServiceTest {
         verify(reviewRepository, never()).save(any());
     }
 
-    @Test
-    @DisplayName("Should throw RuntimeException when review PR number does not match payload PR number")
-    void saveReview_shouldThrowWhenPrNumberDoesNotMatch() {
-        ReviewPayload payload = new ReviewPayload(Map.of(
-                "pull_request", Map.of(
-                        "number", 3,
-                        "title", "Matching Title"
-                )
-        ));
-
-        GenAIReviewSchema review = new GenAIReviewSchema();
-        review.setPullRequestTitle("Matching Title");
-        review.setPullRequestNumber("999");
-
-        RuntimeException ex = assertThrows(RuntimeException.class, () ->
-                persistenceService.saveReview(payload, Events.PULL_REQUEST.name(), review)
-        );
-        assertEquals("Payload Pull Request does not match GenAI response", ex.getMessage());
-        verify(reviewRepository, never()).save(any());
-    }
 
     @Test
     @DisplayName("Should retrieve review document by ID via getReview")

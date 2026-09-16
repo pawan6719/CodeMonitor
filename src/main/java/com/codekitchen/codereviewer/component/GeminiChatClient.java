@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component;
 import com.codekitchen.codereviewer.component.GithubClient.GitHubFile;
 import com.codekitchen.codereviewer.model.*;
 import com.codekitchen.codereviewer.repository.*;
-
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component 
 public class GeminiChatClient {
@@ -35,7 +35,7 @@ public class GeminiChatClient {
         this.reviewRepository = reviewRepository;
     } 
 
-    public GenAIReviewSchema reviewPullRequest(ReviewPayload payload, List<GitHubFile> files){
+    public GenAIReviewSchema reviewPullRequest(ReviewPayload payload, List<GitHubFile> files) throws JsonProcessingException{
         Prompt prompt = buildReviewPrompt(payload, files);
         ChatResponse response = googleGenAiChatModel.call(prompt);
         String rawResponse = response.getResult().getOutput().getText();

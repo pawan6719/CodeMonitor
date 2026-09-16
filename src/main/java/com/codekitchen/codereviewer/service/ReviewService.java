@@ -3,6 +3,7 @@ package com.codekitchen.codereviewer.service;
 import com.codekitchen.codereviewer.model.GenAIReviewSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,9 @@ public class ReviewService {
     private final GeminiChatClient chatClient;
     private final ReviewPersistenceService reviewPersistenceService;
 
+    @Value("${app.dry-run:false}")
+    private boolean isDryRun;
+
     public ReviewService(
             GeminiChatClient chatClient,
             GithubClient githubRestClient,
@@ -41,43 +45,51 @@ public class ReviewService {
 
         if (payload.getRepository() == null || payload.getRepositoryFullName() == null
                 || payload.getRepositoryFullName().isBlank()) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("Repository details are missing from the webhook payload."));
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Repository details are missing from the webhook payload."));
         }
 
         if (payload.getPullRequestNumber() == null) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("Pull request number is missing from the webhook payload."));
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Pull request number is missing from the webhook payload."));
         }
 
         String[] repositoryParts = payload.getRepositoryFullName().split("/", 2);
 
         if (repositoryParts.length != 2) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("Repository full name must be in owner/repo format."));
+            return CompletableFuture
+                    .failedFuture(new IllegalArgumentException("Repository full name must be in owner/repo format."));
         }
 
         String owner = repositoryParts[0];
         String repo = repositoryParts[1];
 
         try {
-        List<GitHubFile> files = githubRestClient.fetchPullRequestFiles(owner, repo, payload.getPullRequestNumber());
+            List<GitHubFile> files = githubRestClient.fetchPullRequestFiles(owner, repo,
+                    payload.getPullRequestNumber());
 
-        if (files.isEmpty()) {
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "No changed files were found for pull request #" + payload.getPullRequestNumber() + "."));
+            if (files.isEmpty()) {
+                return CompletableFuture.failedFuture(new RuntimeException(
+                        "No changed files were found for pull request #" + payload.getPullRequestNumber() + "."));
+            }
+
+            GenAIReviewSchema review = chatClient.reviewPullRequest(payload, files);
+            String commitId = payload.getHeadSha();
+            log.info(String.format(
+                    "AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s",
+                    review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
+            log.info(review.toString());
+            if (!isDryRun) {
+                githubRestClient.postPullRequestReview(owner, repo, commitId, review);
+
+                if (reviewPersistenceService != null) {
+                    reviewPersistenceService.saveReview(payload, "pull_request", review);
+                }
+            }
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
         }
-
-        GenAIReviewSchema review = chatClient.reviewPullRequest(payload, files);
-        String commitId = payload.getHeadSha();
-        log.info(String.format("AI Code reviewer has completed review for repo %s, pull_request number %s with overall Score = %s", review.getProjectId(), review.getPullRequestNumber(), review.getOverallScore()));
-        log.info(review.toString());
-        githubRestClient.postPullRequestReview(owner, repo, commitId, review);
-
-        if (reviewPersistenceService != null) {
-            reviewPersistenceService.saveReview(payload, "pull_request", review);
-        }
-    } catch (Exception e){
-        return CompletableFuture.failedFuture(e);
-    }
-    return CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(null);
 
     }
 

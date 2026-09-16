@@ -3,8 +3,6 @@ spring:
     name: codereviewer
   mongodb:
     uri: ${MONGODB_URI}
-
-
   ai:
     google:
       genai:
@@ -16,3 +14,10 @@ github:
   api:
     url: https://api.github.com
   token: ${GITHUB_TOKEN}
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET}
+
+app:
+  dry-run: false
+  signature:
+    validation: true

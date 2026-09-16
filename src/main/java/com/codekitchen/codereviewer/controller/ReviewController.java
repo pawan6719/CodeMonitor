@@ -48,6 +48,7 @@ public class ReviewController {
             @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature) {
 
         if (!signatureValidator.isValid(signature, requestBody)) {
+            log.error("An error has occured", new RuntimeException("Error"));
             return ResponseEntity.status(401).body("Invalid or missing GitHub signature.");
         }
 

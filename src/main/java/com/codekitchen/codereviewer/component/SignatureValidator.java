@@ -21,7 +21,7 @@ public class SignatureValidator {
     private static final String HMAC_SHA256 = "HmacSHA256";
     private static final Logger log = LoggerFactory.getLogger(SignatureValidator.class);
 
-    @Value("${app.signature.validation: true}")
+    @Value("${app.signature.validation:true}")
     private boolean isSignatureValidation;
     public SignatureValidator(@Value("${github.webhook.secret:}") String webhookSecret) {
         this.webhookSecret = webhookSecret;

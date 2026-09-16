@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: codereviewer
+  mongodb:
+    uri: ${MONGODB_URI}
+  ai:
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          model: gemini-3.6-flash
+
+github:
+  api:
+    url: https://api.github.com
+  token: ${GITHUB_TOKEN}
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET}
+
+app:
+  dry-run: false
+  signature:
+    validation: true

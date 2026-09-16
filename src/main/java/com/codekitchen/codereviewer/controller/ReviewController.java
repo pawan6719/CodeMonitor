@@ -1,7 +1,16 @@
 package com.codekitchen.codereviewer.controller;
 
+import com.codekitchen.codereviewer.model.Events;
+import com.codekitchen.codereviewer.model.ReviewPayload;
 import com.codekitchen.codereviewer.service.ReviewService;
-import org.springframework.http.HttpStatus;
+import com.codekitchen.codereviewer.component.SignatureValidator;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -10,41 +19,73 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/review")
 public class ReviewController {
 
     private final ReviewService reviewService;
+    private final SignatureValidator signatureValidator;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Logger log = LoggerFactory.getLogger(ReviewController.class);
 
-    public ReviewController(ReviewService reviewService) {
+    public ReviewController(ReviewService reviewService, SignatureValidator signatureValidator) {
         this.reviewService = reviewService;
+        this.signatureValidator = signatureValidator;
     }
 
-    /****
-     * This is a comment to test webhook functionality once more. Addendum Comment
-     */
-    @PostMapping("/webhooks/github")
-    public ResponseEntity<String> handleGitHubWebhook(
-            @RequestBody ReviewService.GitHubWebhookPayload payload,
-            @RequestHeader(value = "X-GitHub-Event", required = false) String eventType) {
+    private ReviewPayload parsePayload(String payload) {
+        try {
+            Map<String, Object> map = objectMapper.readValue(payload, new TypeReference<Map<String, Object>>() {});
+            return new ReviewPayload(map);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse JSON", e);
+        }
+    }
 
-        if (payload == null || payload.pull_request() == null || payload.repository() == null) {
+    @PostMapping("/pull")
+    public ResponseEntity<String> reviewPull(
+            @RequestBody String requestBody,
+            @RequestHeader(value = "X-GitHub-Event", required = false) String eventType,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature) {
+
+        if (!signatureValidator.isValid(signature, requestBody)) {
+            return ResponseEntity.status(401).body("Invalid or missing GitHub signature.");
+        }
+
+        ReviewPayload payload;
+        try {
+            payload = parsePayload(requestBody);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to parse request payload.");
+        }
+
+        if (payload == null || payload.getPullRequest() == null || payload.getPullRequest().isEmpty()
+                || payload.getRepository() == null || payload.getRepository().isEmpty()) {
             return ResponseEntity.badRequest().body("Expected a valid GitHub pull request webhook payload.");
         }
 
-        if (eventType != null && !"pull_request".equalsIgnoreCase(eventType)) {
+        if (eventType != null && !Events.PULL_REQUEST.name().equalsIgnoreCase(eventType)) {
             return ResponseEntity.badRequest().body("This endpoint only accepts pull_request webhook events.");
         }
 
-        try {
-            String reviewResponse = reviewService.reviewPullRequest(payload);
-            return ResponseEntity.ok(reviewResponse);
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
-        } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Unable to process the pull request review: " + ex.getMessage());
+        if (payload.getAction() != null && !payload.getAction().equalsIgnoreCase("opened")) {
+            return ResponseEntity.ok()
+                    .body("Review process does not run for " + payload.getAction() + " action on a PR");
         }
+        if (payload.getRepositoryFullName() == null || !payload.getRepositoryFullName().contains("/")) {
+            return ResponseEntity.badRequest().body("Repository full name must be in owner/repo format.");
+        }
+
+        if (payload.getPullRequestNumber() == null) {
+            return ResponseEntity.badRequest().body("Pull request number is missing from the webhook payload.");
+        }
+
+        // 2. Dispatch async work with non-blocking error handler
+        reviewService.reviewPullRequest(payload)
+                .exceptionally(ex -> {
+                    log.error("Async review failed for PR #{}: {}", payload.getPullRequestNumber(), ex.getMessage());
+                    return null;
+                });
+
+        return ResponseEntity.accepted().body("Review process started in background.");
     }
 }
-
-
